@@ -17,7 +17,7 @@ Human brain mapping. 2020; 41: 4804-4814. https://doi.org/10.1002/hbm.25159
 Download and install [Miniconda](https://conda.io/projects/conda/en/latest/user-guide/install/linux.html) and create a new conda environment:
 
 ```bash
-conda create -y -n DL_DiReCT python=3.11
+conda create -y -n DL_DiReCT python=3.12
 source activate DL_DiReCT
 ```
 
@@ -27,8 +27,8 @@ Follow instructions to install [nighres](https://nighres.readthedocs.io/en/lates
 ## Install DL+DiReCT
 ```bash
 cd ${HOME}
-git clone https://github.com/SCAN-NRAD/DL-DiReCT.git
-cd DL-DiReCT
+git clone https://github.com/SCAN-NRAD/DL-DiReCT-V2.git
+cd DL-DiReCT-V2
 pip install .
 ```
 

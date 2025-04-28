@@ -4,7 +4,7 @@
 # DeepSCAN: a deep learning-based neuroanatomy segmentation and cortex parcellation 
 # DiReCT: A Diffeomorphic registration based cortical thickness
 #
-# For instructions to produce a Segmentation: https://github.com/SCAN-NRAD/DL-DiReCT
+# For instructions to produce a Segmentation: https://github.com/SCAN-NRAD/DL-DiReCT-V2
 #
 # this code produces for each hemisphere: The white matter surface
 # 

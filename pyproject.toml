@@ -36,9 +36,9 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/SCAN-NRAD/DL-DiReCT"
+Source = "https://github.com/SCAN-NRAD/DL-DiReCT-V2"
 Publication = "https://doi.org/10.1002/hbm.25159"
-Issues = "https://github.com/SCAN-NRAD/DL-DiReCT/issues"
+Issues = "https://github.com/SCAN-NRAD/DL-DiReCT-V2/issues"
 
 [project.scripts]
 "dl+direct" = "dldirect.run_script:run"
