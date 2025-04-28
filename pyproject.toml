@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DL-DiReCT"
-version = "1.0.3"
+version = "1.0.4"
 description = "DL+DiReCT - Direct Cortical Thickness Estimation using Deep Learning-based Anatomy Segmentation and Cortex Parcellation"
 readme = "README.md"
-authors = [ {name = "Michael Rebsamen"}, {name = "Victor Mello"} ]
+authors = [ {name = "Michael Rebsamen"}, {name = "Victor Mello"}, {name = "David Romascano"} ]
 license = {file = "LICENSE"}
 keywords = ["brain morphometry", "cortical thickness", "MRI", "neuroimaging", "neuroanatomy segmentation", "deep-learning"]
 requires-python = ">=3.7"
@@ -53,5 +53,5 @@ Issues = "https://github.com/SCAN-NRAD/DL-DiReCT/issues"
 where = ["."]
 
 [tool.setuptools.package-data]
-"dldirect" = ["*.sh", "./model/*", "./doc/cite.md", "*.csv"]
+"dldirect" = ["./scripts/*.sh", "./model/*", "./doc/cite.md", "*.csv"]
 

@@ -81,7 +81,7 @@ fi
 
 T1=$1
 DST=$2
-SCRIPT_DIR=`dirname $0`
+SCRIPT_DIR=`dirname $0`/..
 
 # check prerequisites
 [[ -f ${T1} ]] || die "Invalid input volume: ${T1} not found"
@@ -91,7 +91,7 @@ mkdir -p ${DST} || die "Could not create target directory ${DST}"
 
 echo
 echo "If you are using DL+DiReCT in your research, please cite:"
-cat ${SCRIPT_DIR}/cite.md
+cat ${SCRIPT_DIR}/doc/cite.md
 echo
 
 # convert into freesurfer space (resample to 1mm voxel, orient to LIA)

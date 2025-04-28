@@ -2,7 +2,7 @@
 
 DL+DiReCT combines a deep learning-based neuroanatomy segmentation and cortex parcellation with a diffeomorphic registration technique to measure cortical thickness from T1w MRI.
 
-![Abstract](doc/abstract.png)
+![Abstract](dldirect/doc/abstract.png)
 
 If you are using DL+DiReCT in your research, please cite ([bibtex](citations.bib)) the corresponding [publication](https://doi.org/10.1002/hbm.25159):
 ```
@@ -21,12 +21,16 @@ conda create -y -n DL_DiReCT python=3.11
 source activate DL_DiReCT
 ```
 
+## Requirements
+Follow instructions to install `nighres <https://nighres.readthedocs.io/en/latest/installation.html>`_.
+You should also install `Freesurfer version 7.4.1 <https://surfer.nmr.mgh.harvard.edu/fswiki/rel7downloads#A7.4.1release>`_.
+
 ## Install DL+DiReCT
 ```bash
 cd ${HOME}
 git clone https://github.com/SCAN-NRAD/DL-DiReCT.git
 cd DL-DiReCT
-pip install -e .
+pip install .
 ```
 
 # Usage
@@ -58,5 +62,5 @@ The following models are available with the ```--model ...``` option:
 - ```v6```: For both contrast-enhanced and un-enhanced MRI ([Rebsamen et al., 2022](https://doi.org/10.1002/hbm.26117))
 - ```v7```: Same as v6, with 74 region per hemisphere according the *Destrieux* atlas ([Rebsamen et al., 2022](https://doi.org/10.1002/hbm.26117))
 
-# [Frequently Asked Questions](doc/faq.md)
-For further details, consult the corresponding [publication](https://doi.org/10.1002/hbm.25159) and the [FAQ](doc/faq.md) or [contact us](http://www.scancore.org/index.php/research/imageanalytics)
+# [Frequently Asked Questions](dldirect/doc/faq.md)
+For further details, consult the corresponding [publication](https://doi.org/10.1002/hbm.25159) and the [FAQ](dldirect/doc/faq.md) or [contact us](http://www.scancore.org/index.php/research/imageanalytics)
