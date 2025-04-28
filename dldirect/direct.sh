@@ -25,7 +25,7 @@ fi
 
 SUBJECT_ID=$1
 DST=$2
-SCRIPT_DIR=`dirname $0`/src
+SCRIPT_DIR=`dirname $0`
 
 [[ -f "${DST}/softmax_seg.nii.gz" ]] || die "Invalid OUTPUT_DIR '${DST}': no segmentation found. Did 'dl+direct.sh --no-cth' run?"
 

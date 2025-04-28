@@ -386,7 +386,7 @@ def locate_model(model_file):
     if os.path.exists(model_file):
         return model_file
     
-    for prefix in ['', '{}/../model/'.format(SCRIPT_DIR)]:
+    for prefix in ['', '{}/model/'.format(SCRIPT_DIR)]:
         for suffix in ['.pth', '_f1.pth']:
             file = '{}{}{}'.format(prefix, model_file, suffix)
             if os.path.exists(file):

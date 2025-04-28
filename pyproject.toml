@@ -41,13 +41,17 @@ Publication = "https://doi.org/10.1002/hbm.25159"
 Issues = "https://github.com/SCAN-NRAD/DL-DiReCT/issues"
 
 [project.scripts]
-"dl+direct" = "run_script:run"
-"direct" = "run_script:run"
-"fast_surface_reconstruction" = "run_script:run"
-"batch-dl+direct" = "run_script:run"
-"stats2table" = "stats2table:main"
-"radiomics_extractor" = "radiomics_extractor:main"
-"radiomics2table" = "radiomics2table:main"
+"dl+direct" = "dldirect.run_script:run"
+"direct" = "dldirect.run_script:run"
+"fast_surface_reconstruction" = "dldirect.run_script:run"
+"batch-dl+direct" = "dldirect.run_script:run"
+"stats2table" = "dldirect.stats2table:main"
+"radiomics_extractor" = "dldirect.radiomics_extractor:main"
+"radiomics2table" = "dldirect.radiomics2table:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+
+[tool.setuptools.package-data]
+"dldirect" = ["*.sh", "./model/*", "./doc/cite.md", "*.csv"]
+

@@ -60,7 +60,7 @@ if [ $# -lt 2 ] ; then
 	usage 1
 fi
 
-export SCRIPT_DIR=`dirname $0`/src
+export SCRIPT_DIR=`dirname $0`
 export SRC=$1
 export DST=$2
 export T1_FILE
