@@ -22,8 +22,7 @@ source activate DL_DiReCT
 ```
 
 ## Requirements
-Follow instructions to install `nighres <https://nighres.readthedocs.io/en/latest/installation.html>`_.
-You should also install `Freesurfer version 7.4.1 <https://surfer.nmr.mgh.harvard.edu/fswiki/rel7downloads#A7.4.1release>`_.
+Follow instructions to install [nighres](https://nighres.readthedocs.io/en/latest/installation.html) as well as [Freesurfer version 7.4.1](https://surfer.nmr.mgh.harvard.edu/fswiki/rel7downloads#A7.4.1release)
 
 ## Install DL+DiReCT
 ```bash
