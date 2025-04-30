@@ -6,7 +6,6 @@ MODEL_ARGS=$4
 
 echo ${MODEL_ARGS}
 
-FS_VERSION_SUPPORT="7.4.1"
 if [ -z "$FREESURFER_HOME" ]
   then
   echo "  ERROR: Did not find \$FREESURFER_HOME. A working version of FreeSurfer $FS_VERSION_SUPPORT"
