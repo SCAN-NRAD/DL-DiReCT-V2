@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DL-DiReCT"
-version = "1.0.3"
+version = "1.0.4"
 description = "DL+DiReCT - Direct Cortical Thickness Estimation using Deep Learning-based Anatomy Segmentation and Cortex Parcellation"
 readme = "README.md"
-authors = [ {name = "Michael Rebsamen"}, {name = "Victor Mello"} ]
+authors = [ {name = "Michael Rebsamen"}, {name = "Victor Mello"}, {name = "David Romascano"} ]
 license = {file = "LICENSE"}
 keywords = ["brain morphometry", "cortical thickness", "MRI", "neuroimaging", "neuroanatomy segmentation", "deep-learning"]
 requires-python = ">=3.7"
@@ -36,18 +36,22 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/SCAN-NRAD/DL-DiReCT"
+Source = "https://github.com/SCAN-NRAD/DL-DiReCT-V2"
 Publication = "https://doi.org/10.1002/hbm.25159"
-Issues = "https://github.com/SCAN-NRAD/DL-DiReCT/issues"
+Issues = "https://github.com/SCAN-NRAD/DL-DiReCT-V2/issues"
 
 [project.scripts]
-"dl+direct" = "run_script:run"
-"direct" = "run_script:run"
-"fast_surface_reconstruction" = "run_script:run"
-"batch-dl+direct" = "run_script:run"
-"stats2table" = "stats2table:main"
-"radiomics_extractor" = "radiomics_extractor:main"
-"radiomics2table" = "radiomics2table:main"
+"dl+direct" = "dldirect.run_script:run"
+"direct" = "dldirect.run_script:run"
+"fast_surface_reconstruction" = "dldirect.run_script:run"
+"batch-dl+direct" = "dldirect.run_script:run"
+"stats2table" = "dldirect.stats2table:main"
+"radiomics_extractor" = "dldirect.radiomics_extractor:main"
+"radiomics2table" = "dldirect.radiomics2table:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+
+[tool.setuptools.package-data]
+"dldirect" = ["./scripts/*.sh", "./model/*", "./doc/cite.md", "*.csv"]
+
