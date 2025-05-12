@@ -87,8 +87,7 @@ SCRIPT_DIR=`dirname $0`/..
 # check prerequisites
 [[ -f ${T1} ]] || die "Invalid input volume: ${T1} not found"
 [[ ${DO_SKULLSTRIP} -eq 0 ]] || [[ "`which hd-bet`X" != "X" ]] || die "hd-bet not found. Install it from https://github.com/MIC-DKFZ/HD-BET"
-[[ ${DO_FSR} -eq 0 ]] || { [[ -z "$FREESURFER_HOME" ]] && die "\$FREESURFER_HOME is not set"; } || grep -q "${FS_VERSION_SUPPORT}" "$FREESURFER_HOME/build-stamp.txt" || die "Fast surface reconstruction requires FreeSurfer ${FS_VERSION_SUPPORT}"
-python -c "import nighres" 2>/dev/null || die "Fast surface reconstruction requires nighres python module"
+[[ ${DO_FSR} -eq 0 ]] || { [[ -z "$FREESURFER_HOME" ]] && die "\$FREESURFER_HOME is not set"; } || grep -q "${FS_VERSION_SUPPORT}" "$FREESURFER_HOME/build-stamp.txt" || die "Fast surface reconstruction requires FreeSurfer ${FS_VERSION_SUPPORT}" || python -c "import nighres" 2>/dev/null || die "Fast surface reconstruction requires nighres python module"
 
 mkdir -p ${DST} || die "Could not create target directory ${DST}"
 
