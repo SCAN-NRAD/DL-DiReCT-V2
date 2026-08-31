@@ -2,7 +2,6 @@ import argparse
 import numpy as np
 import nibabel as nib
 import pandas as pd
-from nibabel.processing import conform
 
 # For FS visualization
 def get_vox2ras_tkr(t1):
@@ -21,13 +20,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-inputpath', '--input')
 args = parser.parse_args()
 
-# Read and conform (256x256x256) DL+DiReCT results
+# The uncropped results are already conformed (256x256x256, 1mm, LIA), so they
+# can be used as they are. Conforming the *cropped* volumes instead re-centres
+# them on the crop, which leaves mri/ and surf/ in a frame that is translated
+# with respect to the T1w_norm* volumes by (128 - centre of the crop).
 # segmentation
-seg_img = nib.load(args.input+'/softmax_seg.nii.gz')
-seg_image = conform(seg_img, order=0, orientation = 'LIA')
-# MRI 
-brain_img = nib.load(args.input+'/T1w_norm_noskull_cropped.nii.gz')
-brain_image = conform(brain_img, order=0, orientation = 'LIA')
+seg_image = nib.load(args.input+'/T1w_norm_seg.nii.gz')
+# MRI
+brain_image = nib.load(args.input+'/T1w_norm_noskull.nii.gz')
 affine = get_vox2ras_tkr(seg_image)
 
 # DeepSCAN label definition
