@@ -14,6 +14,7 @@ import torch
 import torch.nn.functional as F
 import time
 import os
+import sys
 
 
 def get_device(device=None):
@@ -38,7 +39,7 @@ def _gaussian_kernel_1d(sigma, device, truncate=4.0):
     return kernel
 
 
-def gaussian_smooth_3d(vol, sigma, device, zero_boundary=True):
+def gaussian_smooth_3d(vol, sigma, device, zero_boundary=True, truncate=4.0):
     """Separable 3D Gaussian smoothing using three 1D convolutions.
 
     Args:
@@ -59,7 +60,7 @@ def gaussian_smooth_3d(vol, sigma, device, zero_boundary=True):
 
     # Smooth along D axis
     if sigma_d > 0:
-        kernel = _gaussian_kernel_1d(sigma_d, device)
+        kernel = _gaussian_kernel_1d(sigma_d, device, truncate)
         k = kernel.numel()
         pad = k // 2
         kd = kernel.reshape(1, 1, k, 1, 1).expand(C, -1, -1, -1, -1)
@@ -68,7 +69,7 @@ def gaussian_smooth_3d(vol, sigma, device, zero_boundary=True):
 
     # Smooth along H axis
     if sigma_h > 0:
-        kernel = _gaussian_kernel_1d(sigma_h, device)
+        kernel = _gaussian_kernel_1d(sigma_h, device, truncate)
         k = kernel.numel()
         pad = k // 2
         kh = kernel.reshape(1, 1, 1, k, 1).expand(C, -1, -1, -1, -1)
@@ -77,7 +78,7 @@ def gaussian_smooth_3d(vol, sigma, device, zero_boundary=True):
 
     # Smooth along W axis
     if sigma_w > 0:
-        kernel = _gaussian_kernel_1d(sigma_w, device)
+        kernel = _gaussian_kernel_1d(sigma_w, device, truncate)
         k = kernel.numel()
         pad = k // 2
         kw = kernel.reshape(1, 1, 1, 1, k).expand(C, -1, -1, -1, -1)
@@ -173,6 +174,85 @@ def gaussian_gradient_3d(vol, sigma, device, voxel_size=None):
         result[:, 2] /= vw
 
     return result
+
+
+
+def direction_masked_smooth_3d(vol, sigma, device, truncate=2.0, mode='hard'):
+    """Gaussian smoothing of a vector field that refuses to average across a
+    direction reversal.
+
+    A neighbour only contributes to a voxel if its vector has a non-negative dot
+    product with that voxel's own vector. Across a thin gyral blade the two banks
+    carry near-antiparallel velocities, and an isotropic Gaussian blends them into
+    a common translation; this keeps the two sides separate. Where the centre
+    vector is essentially zero there is no direction to preserve, so the filter
+    falls back to the ordinary Gaussian and stagnant regions can still be filled.
+    """
+    r = max(1, int(truncate * sigma + 0.5))
+    coords = torch.arange(-r, r + 1, device=device, dtype=torch.float32)
+    g = torch.exp(-(coords ** 2) / (2.0 * sigma * sigma))
+    g = g / g.sum()
+
+    D, H, W = vol.shape[2:]
+    padded = F.pad(vol, (r, r, r, r, r, r), mode='replicate')
+    acc = torch.zeros_like(vol)
+    wacc = torch.zeros((vol.shape[0], 1, D, H, W), device=device)
+    centre_zero = (vol ** 2).sum(dim=1, keepdim=True).sqrt() < 1e-6
+
+    norm_c = (vol ** 2).sum(dim=1, keepdim=True).sqrt().clamp(min=1e-6)
+    for dz in range(-r, r + 1):
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                wgt = float(g[dz + r] * g[dy + r] * g[dx + r])
+                if wgt < 1e-6:
+                    continue
+                sh = padded[:, :, r + dz:r + dz + D, r + dy:r + dy + H, r + dx:r + dx + W]
+                dot = (sh * vol).sum(dim=1, keepdim=True)
+                if mode == 'hard':
+                    dw = (dot > 0).to(vol.dtype)
+                else:
+                    cos = dot / (norm_c * (sh ** 2).sum(dim=1, keepdim=True).sqrt().clamp(min=1e-6))
+                    # 'relu' drops anything past 90 degrees, 'soft' only attenuates
+                    dw = cos.clamp(min=0.0) if mode == 'relu' else (1.0 + cos) * 0.5
+                dw = torch.where(centre_zero, torch.ones_like(dw), dw)
+                acc = acc + wgt * dw * sh
+                wacc = wacc + wgt * dw
+    return torch.where(wacc > 1e-6, acc / wacc.clamp(min=1e-6), vol)
+
+
+
+def selective_masked_smooth_3d(vol, sigma, device, truncate=2.0, mode='hard',
+                               coherence_threshold=0.5, gate='coherence',
+                               return_stats=False):
+    """Plain Gaussian smoothing everywhere except where the field is locally bipolar.
+
+    Coherence is |G * v| / (G * |v|): near 1 where the neighbourhood points one
+    way, near 0 where opposing vectors cancel — which is what a thin gyral blade
+    looks like, the two banks carrying near-antiparallel velocity. Only those
+    voxels get the direction-masked filter, so the Gaussian keeps regularising
+    the rest of the volume.
+    """
+    plain = gaussian_smooth_3d(vol, sigma, device, zero_boundary=False, truncate=truncate)
+    mag = (vol ** 2).sum(dim=1, keepdim=True).sqrt()
+    smooth_mag = gaussian_smooth_3d(mag, sigma, device, zero_boundary=False, truncate=truncate)
+    coherence = (plain ** 2).sum(dim=1, keepdim=True).sqrt() / smooth_mag.clamp(min=1e-6)
+
+    if gate == 'direction':
+        # the smoothed vector has turned away from the voxel's own vector, i.e.
+        # the neighbourhood has overruled it — that is the damage we care about
+        cos_turn = (plain * vol).sum(dim=1, keepdim=True) / (
+            (plain ** 2).sum(dim=1, keepdim=True).sqrt().clamp(min=1e-6) * mag.clamp(min=1e-6))
+        bipolar = (cos_turn < coherence_threshold) & (mag > 1e-6)
+    else:
+        bipolar = (coherence < coherence_threshold) & (smooth_mag > 1e-6)
+    if not bool(bipolar.any()):
+        return (plain, 0.0) if return_stats else plain
+
+    masked = direction_masked_smooth_3d(vol, sigma, device, truncate=truncate, mode=mode)
+    out = torch.where(bipolar, masked, plain)
+    if return_stats:
+        return out, float(bipolar.float().mean())
+    return out
 
 
 def _make_identity_grid(shape, device):
@@ -296,7 +376,14 @@ def kelly_kapowski_cuda(
     max_iterations=45,
     gradient_step=0.025,
     smoothing_sigma=1.0,
+    gradient_sigma=None,
     velocity_smooth_sigma=1.2247,
+    velocity_smooth_sigma_start=None,
+    velocity_smooth_sigma_power=1.0,
+    velocity_smooth_masked=False,
+    velocity_smooth_mask_mode='hard',
+    velocity_smooth_selective=None,
+    velocity_smooth_gate='coherence',
     num_integration_points=10,
     thickness_prior=10.0,
     max_invert_iterations=20,
@@ -304,6 +391,9 @@ def kelly_kapowski_cuda(
     verbose=True,
     save_fields_dir=None,
     velocity_field_prefix=None,
+    cumulative_fields=True,
+    return_velocity=False,
+    gradient_gate=1e-3,
     ref_img=None,
     voxel_size=None,
 ):
@@ -320,6 +410,10 @@ def kelly_kapowski_cuda(
         smoothing_sigma: sigma for gradient smoothing (mm) and hit/total
             smoothing (voxels). Same value, different units per context —
             matches ANTs m_SmoothingVariance inconsistency. Default 1.0.
+        velocity_smooth_sigma_start: if set, the velocity smoothing sigma is
+            annealed geometrically from this value at the first iteration down
+            to velocity_smooth_sigma at the last. Wider early smoothing diffuses
+            velocity into regions where the field is otherwise stagnant.
         velocity_smooth_sigma: sigma for velocity field smoothing in voxels
             (default sqrt(1.5) ≈ 1.2247, matching ANTs m_SmoothingVelocityFieldVariance=1.5)
         num_integration_points: inner integration steps (default 10)
@@ -333,6 +427,22 @@ def kelly_kapowski_cuda(
         save_fields_dir: if set, save displacement fields as NIfTI to this directory.
             Saves per-iteration 4D volumes (3 components × integration points) for both
             the inverse field and forward (integrated) field.
+        gradient_gate: voxels whose gradient magnitude is at or below this are
+            given no direction and cannot move. NOTE this is an ABSOLUTE
+            threshold while the derivative kernel's amplitude varies strongly
+            with smoothing_sigma: measured on the development subject, the
+            median GM gradient spans ~2000x from sigma=0.35 to sigma=1.0, and
+            the fraction of GM voxels falling under the gate goes 3.7% (sigma
+            1.0) -> 15.7% (0.75) -> 39% (0.5) -> 54% (0.35) -> 100% (0.2). So
+            the same constant means very different things at different sigma.
+        return_velocity: return (thickness, velocity) instead of thickness, with
+            the velocity array as written to Velocity.nii.gz (None if no
+            velocity_field_prefix was given).
+        cumulative_fields: also write <prefix>Forward/InverseVelocityField.nii.gz.
+            These need a [3,D,H,W] GPU->CPU copy per integration point and cost
+            far more than the solve itself. Velocity.nii.gz -- the underlying
+            field, and the only one the pial propagation reads -- is written
+            either way, so set False when the cumulative fields are not needed.
         ref_img: nibabel image for affine/header when saving fields (required if save_fields_dir is set)
         voxel_size: (vd, vh, vw) voxel size in mm. None = (1, 1, 1) isotropic.
             When set, smoothing_sigma is converted from mm to per-axis voxel
@@ -365,9 +475,14 @@ def kelly_kapowski_cuda(
     # smoothing_sigma=1.0, velocity_smooth_sigma=1.2247 (=sqrt(1.5)).
     # Only the gradient sigma needs mm→voxel conversion; the smoothing
     # sigmas are already in voxel units and must NOT be divided by voxel_size.
+    # `smoothing_sigma` normally sets BOTH the gradient (differentiation) sigma
+    # and the hit/total accumulation sigma. `gradient_sigma`, when given,
+    # overrides only the former, so the differentiation scale can be varied
+    # independently of the accumulation smoothing.
+    grad_sigma_mm = smoothing_sigma if gradient_sigma is None else gradient_sigma
     if voxel_size is None:
         voxel_size_t = None
-        grad_sigma_vox = smoothing_sigma        # scalar, backward-compatible
+        grad_sigma_vox = grad_sigma_mm          # scalar, backward-compatible
         smooth_sigma_vox = smoothing_sigma
         vel_sigma_vox = velocity_smooth_sigma
     else:
@@ -394,7 +509,7 @@ def kelly_kapowski_cuda(
         if counts.most_common(1)[0][1] == 1:
             # All three differ — use median
             mode_val = sorted(rounded)[1]
-        grad_sigma_vox = smoothing_sigma / mode_val
+        grad_sigma_vox = grad_sigma_mm / mode_val
         # Hit/total and velocity smoothing: sigma in voxels, same on all axes
         # (ANTs uses SetUseImageSpacing(false) — no spacing conversion)
         smooth_sigma_vox = smoothing_sigma
@@ -403,6 +518,21 @@ def kelly_kapowski_cuda(
             print(f"  voxel_size={voxel_size}, in-plane={mode_val:.3f}mm, "
                   f"grad_sigma_vox={grad_sigma_vox:.4f}, "
                   f"smooth_sigma_vox={smooth_sigma_vox}, vel_sigma_vox={vel_sigma_vox}")
+
+    # A sub-voxel gradient sigma cannot be represented on an integer grid: the
+    # sampled smoothing kernel degenerates towards [0, 1, 0] and its analytic
+    # derivative towards zero, so the gradient falls under the (grad_mag > 1e-3)
+    # gate below and NOTHING propagates -- the solve then returns an all-zero
+    # thickness map. That is a property of the sampling, not a bug to clamp
+    # away, so warn loudly rather than silently returning zeros.
+    _dk = _gaussian_deriv_kernel_1d(grad_sigma_vox, device).abs().max().item()
+    if _dk <= 1e-3:
+        print(f"WARNING: grad_sigma_vox={grad_sigma_vox:.4f} is too small to "
+              f"differentiate on this grid (max|deriv kernel|={_dk:.2e} <= the "
+              f"1e-3 gradient gate). The velocity field will not propagate and "
+              f"the thickness map will be all zeros. Cortical thickness from "
+              f"this solve is unusable; surfaces may still be fine.",
+              file=sys.stderr)
 
     # Move inputs to device as [1, 1, D, H, W]
     seg_t = torch.from_numpy(seg.astype(np.float32)).to(device).reshape(1, 1, D, H, W)
@@ -421,6 +551,7 @@ def kelly_kapowski_cuda(
         os.makedirs(save_fields_dir, exist_ok=True)
 
     # Velocity field: accumulated deformation
+    velocity_out = None
     velocity_field = torch.zeros(1, 3, D, H, W, device=device)
     # Integrated field persists across outer iterations (ANTs behavior)
     integrated_field = torch.zeros(1, 3, D, H, W, device=device)
@@ -440,8 +571,16 @@ def kelly_kapowski_cuda(
         total_image = torch.zeros(1, 1, D, H, W, device=device)
         thickness_image = torch.zeros(1, 1, D, H, W, device=device)
 
-        # Collectors for field snapshots (only when saving)
-        if save_fields_dir or velocity_field_prefix:
+        # Collectors for field snapshots (only when saving). The per-integration
+        # -point GPU->CPU copy below is the dominant cost of writing fields, so
+        # only collect on an iteration whose snapshots are actually consumed:
+        # save_fields_dir writes every iteration, velocity_field_prefix only the
+        # last. Collecting on all 45 and using one was ~3x the per-iteration
+        # cost for nothing.
+        need_snapshots = bool(save_fields_dir) or (
+            velocity_field_prefix is not None and cumulative_fields
+            and iteration == max_iterations - 1)
+        if need_snapshots:
             inverse_field_snapshots = []
             forward_field_snapshots = []
 
@@ -468,14 +607,14 @@ def kelly_kapowski_cuda(
                 grad_phys_mag = (grad_phys * grad_phys).sum(dim=1, keepdim=True).sqrt()
                 # Unit direction in physical space
                 phys_dir = grad_phys / (grad_phys_mag + 1e-8)
-                phys_dir = phys_dir * (grad_phys_mag > 1e-3).float()
+                phys_dir = phys_dir * (grad_phys_mag > gradient_gate).float()
                 # Convert physical direction to voxel displacement:
                 # 1mm in direction d_i → 1/voxel_size_i voxels
                 grad_safe = phys_dir / voxel_size_t
             else:
                 grad_mag = (grad * grad).sum(dim=1, keepdim=True).sqrt()
                 grad_safe = grad / (grad_mag + 1e-8)
-                grad_safe = grad_safe * (grad_mag > 1e-3).float()
+                grad_safe = grad_safe * (grad_mag > gradient_gate).float()
 
             # Speed: -(warped_wm - gm_prob) * gm_prob * gradient_step at GM voxels
             # gradient_step is in mm; grad_safe is in voxels/mm, so the product
@@ -527,7 +666,7 @@ def kelly_kapowski_cuda(
                 integrated_field, identity_grid,
                 max_iter=max_invert_iterations, initial=inverse_field)
 
-            if save_fields_dir or velocity_field_prefix:
+            if need_snapshots:
                 # [3, D, H, W] snapshots — GPU→CPU transfer per integration point
                 inverse_field_snapshots.append(inverse_field[0].cpu().numpy())
                 forward_field_snapshots.append(integrated_field[0].cpu().numpy())
@@ -550,8 +689,16 @@ def kelly_kapowski_cuda(
                 print(f"    Saved fields for iteration {iteration + 1}")
 
         if velocity_field_prefix and iteration == max_iterations - 1:
-            _save_velocity_fields(velocity_field_prefix, ref_img,
-                                  inverse_field_snapshots, forward_field_snapshots)
+            if cumulative_fields:
+                _save_velocity_fields(velocity_field_prefix, ref_img,
+                                      inverse_field_snapshots, forward_field_snapshots)
+            # the underlying velocity field, which the integration composes
+            # num_integration_points times; [D, H, W, 3] in voxels (d, h, w)
+            vel = velocity_field[0].cpu().numpy().transpose(1, 2, 3, 0).astype(np.float32)
+            velocity_out = vel
+            vimg = nib.Nifti1Image(vel, ref_img.affine)
+            vimg.header['xyzt_units'] = 10
+            nib.save(vimg, '{}Velocity.nii.gz'.format(velocity_field_prefix))
 
         # ---- After inner loop: update velocity and thickness ----
 
@@ -585,8 +732,24 @@ def kelly_kapowski_cuda(
         cortical_thickness = thickness_vals * gm_mask
 
         # Smooth velocity field (ANTs uses replicate-pad, no boundary zeroing)
-        velocity_field = gaussian_smooth_3d(
-            velocity_field, vel_sigma_vox, device, zero_boundary=False)
+        sigma_now = vel_sigma_vox
+        if velocity_smooth_sigma_start:
+            frac = iteration / max(max_iterations - 1, 1)
+            # power > 1 holds the sigma near the start value for longer
+            frac = frac ** velocity_smooth_sigma_power
+            sigma_now = velocity_smooth_sigma_start * (
+                (vel_sigma_vox / velocity_smooth_sigma_start) ** frac)
+        if velocity_smooth_selective is not None:
+            velocity_field = selective_masked_smooth_3d(
+                velocity_field, sigma_now, device, mode=velocity_smooth_mask_mode,
+                coherence_threshold=velocity_smooth_selective,
+                gate=velocity_smooth_gate)
+        elif velocity_smooth_masked:
+            velocity_field = direction_masked_smooth_3d(
+                velocity_field, sigma_now, device, mode=velocity_smooth_mask_mode)
+        else:
+            velocity_field = gaussian_smooth_3d(
+                velocity_field, sigma_now, device, zero_boundary=False)
 
         # Constrain to active region
         velocity_field = velocity_field * active_mask
@@ -602,7 +765,11 @@ def kelly_kapowski_cuda(
     if verbose:
         print(f"DiReCT CUDA: completed in {total_time:.1f}s")
 
-    return cortical_thickness.squeeze().cpu().numpy()
+    thickness_np = cortical_thickness.squeeze().cpu().numpy()
+    # `velocity_out` is the same array just written to Velocity.nii.gz. Handing
+    # it back lets callers skip re-reading (and gunzipping) the file they asked
+    # for a moment earlier -- see solve_velocity_field.
+    return (thickness_np, velocity_out) if return_velocity else thickness_np
 
 
 def _try_compile():
