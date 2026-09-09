@@ -35,14 +35,30 @@ df_labels = pd.read_csv(args.input+'/label_def.csv').set_index('LABEL').to_dict(
 
 # Transform DeepSCAN corpus callosum and WM-hypointensities label into L and R WM
 output_data = seg_image.get_fdata()
-cc_min = int(min(np.argwhere(output_data == df_labels['ID']['Corpus-Callosum']).T[0]))
-cc_max = int(max(np.argwhere(output_data == df_labels['ID']['Corpus-Callosum']).T[0]))
+label_ids = df_labels['ID']
+
+# Not every model segments WM-hypointensities: it is part of the v6/v7 label sets,
+# but not of the default v0 one. Merge whichever of the midline labels the model provides.
+midline_labels = ['Corpus-Callosum']
+if 'WM-hypointensities' in label_ids:
+    midline_labels.append('WM-hypointensities')
+else:
+    print('WARNING: segmentation model used does not detect WM-hypointensities, '
+          'surface reconstruction may be unreliable')
+
+cc_slices = np.argwhere(output_data == label_ids['Corpus-Callosum']).T[0]
+if cc_slices.size == 0:
+    raise SystemExit('ERROR: no Corpus-Callosum was segmented, cannot separate the hemispheres.')
+
+cc_min = int(cc_slices.min())
+cc_max = int(cc_slices.max())
 
 side = np.zeros_like(output_data)
 side[0:cc_min+int((cc_max-cc_min)/2),:,:] = 10000
 side[cc_min+int((cc_max-cc_min)/2):255,:,:] = 5000
-temp = np.where( ((output_data == df_labels['ID']['Corpus-Callosum']) | (output_data == df_labels['ID']['WM-hypointensities'])) & (side == 10000), df_labels['ID']['Right-Cerebral-White-Matter'], output_data)
-seg_img = np.where( ((temp == df_labels['ID']['Corpus-Callosum']) | (temp == df_labels['ID']['WM-hypointensities'])) & (side == 5000), df_labels['ID']['Left-Cerebral-White-Matter'], temp)
+midline_mask = np.isin(output_data, [label_ids[lbl] for lbl in midline_labels])
+temp = np.where(midline_mask & (side == 10000), label_ids['Right-Cerebral-White-Matter'], output_data)
+seg_img = np.where(midline_mask & (side == 5000), label_ids['Left-Cerebral-White-Matter'], temp)
 
 # export the transformed segmentation
 trans_seg_mgz = nib.freesurfer.mghformat.MGHImage(np.array(seg_img,dtype=np.int32) , affine, header=None, extra=None, file_map=None)
