@@ -32,7 +32,17 @@ def get_stats(thickness_map, parcellation):
 		thickness_map[np.where(np.logical_and(parcellation >= 1000+offset, parcellation < 2000+offset))],
 		thickness_map[np.where(np.logical_and(parcellation >= 2000+offset, parcellation < 3000+offset))]
 		]
-    return np.array([roi[roi.nonzero()].mean() for roi in rois]), np.array([roi[roi.nonzero()].std() for roi in rois]), all_labels
+    # A parcel with no non-zero thickness voxels has no mean to report. Guard
+    # it explicitly: np.mean of an empty slice divides by zero, which floods
+    # stderr with RuntimeWarnings and yields the same NaN anyway. NaN (not 0)
+    # stays the reported value, so an empty parcel is never mistaken for a
+    # measured thickness of zero.
+    def _stat(roi, fn):
+        vals = roi[roi.nonzero()]
+        return fn(vals) if vals.size else np.nan
+
+    return (np.array([_stat(roi, np.mean) for roi in rois]),
+            np.array([_stat(roi, np.std) for roi in rois]), all_labels)
 
 
 def write_stats(stats, subject_id, fname, label_names):    
