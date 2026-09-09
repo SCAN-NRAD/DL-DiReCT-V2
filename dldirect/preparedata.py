@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import nibabel as nib
 import pandas as pd
+from sklearn.svm import LinearSVC
 from nibabel.processing import conform
 
 # For FS visualization
@@ -46,19 +47,40 @@ else:
     print('WARNING: segmentation model used does not detect WM-hypointensities, '
           'surface reconstruction may be unreliable')
 
-cc_slices = np.argwhere(output_data == label_ids['Corpus-Callosum']).T[0]
-if cc_slices.size == 0:
-    raise SystemExit('ERROR: no Corpus-Callosum was segmented, cannot separate the hemispheres.')
+# Separate the hemispheres with a plane fitted to the labels that already carry a
+# laterality, instead of splitting the corpus callosum bounding box in the middle.
+# The bounding box approach used only the two extreme CC voxels, was quantised to
+# whole voxels and was axis aligned, so it could not follow a tilted head.
+LATERAL_PREFIXES = {'left': ('Left', 'lh'), 'right': ('Right', 'rh')}
+MAX_FIT_VOXELS = 40000
 
-cc_min = int(cc_slices.min())
-cc_max = int(cc_slices.max())
+def _side_labels(side):
+    return [label_ids[lbl] for lbl in label_ids if lbl.startswith(LATERAL_PREFIXES[side])]
 
-side = np.zeros_like(output_data)
-side[0:cc_min+int((cc_max-cc_min)/2),:,:] = 10000
-side[cc_min+int((cc_max-cc_min)/2):255,:,:] = 5000
+def _fit_hemisphere_plane(seg):
+    # deterministic stride based subsampling, the fit does not need every voxel
+    coords = {}
+    for side in ('left', 'right'):
+        pts = np.argwhere(np.isin(seg, _side_labels(side)))
+        if pts.size == 0:
+            raise SystemExit('ERROR: no {} sided labels were segmented, '
+                             'cannot separate the hemispheres.'.format(side))
+        coords[side] = pts[::max(1, len(pts) // MAX_FIT_VOXELS)]
+
+    x = np.vstack([coords['left'], coords['right']]).astype(np.float64)
+    y = np.concatenate([np.zeros(len(coords['left'])), np.ones(len(coords['right']))])
+
+    return LinearSVC(C=0.01, max_iter=20000).fit(x, y)
+
 midline_mask = np.isin(output_data, [label_ids[lbl] for lbl in midline_labels])
-temp = np.where(midline_mask & (side == 10000), label_ids['Right-Cerebral-White-Matter'], output_data)
-seg_img = np.where(midline_mask & (side == 5000), label_ids['Left-Cerebral-White-Matter'], temp)
+seg_img = output_data.copy()
+midline_voxels = np.argwhere(midline_mask)
+if midline_voxels.size > 0:
+    # positive side of the decision function is the right hemisphere
+    is_right = _fit_hemisphere_plane(output_data).decision_function(
+        midline_voxels.astype(np.float64)) > 0
+    seg_img[tuple(midline_voxels[is_right].T)] = label_ids['Right-Cerebral-White-Matter']
+    seg_img[tuple(midline_voxels[~is_right].T)] = label_ids['Left-Cerebral-White-Matter']
 
 # export the transformed segmentation
 trans_seg_mgz = nib.freesurfer.mghformat.MGHImage(np.array(seg_img,dtype=np.int32) , affine, header=None, extra=None, file_map=None)
