@@ -60,6 +60,7 @@ The following models are available with the ```--model ...``` option:
 - ```v0```: Default, for un-enhanced T1w MRI, cortex parcellation with *Desikan-Killiany* atlas ([Rebsamen et al., 2020](https://doi.org/10.1002/hbm.25159))
 - ```v6```: For both contrast-enhanced and un-enhanced MRI ([Rebsamen et al., 2022](https://doi.org/10.1002/hbm.26117))
 - ```v7```: Same as v6, with 74 region per hemisphere according the *Destrieux* atlas ([Rebsamen et al., 2022](https://doi.org/10.1002/hbm.26117))
+-  ```v8```: Same as v6, but with fine-tuning for more contrast robustness across scanner sequence parameters ([Blattner et al., 2026](https://doi.org/10.1002/hbm.70560))
 
 # [Frequently Asked Questions](dldirect/doc/faq.md)
 For further details, consult the corresponding [publication](https://doi.org/10.1002/hbm.25159) and the [FAQ](dldirect/doc/faq.md) or [contact us](http://www.scancore.org/index.php/research/imageanalytics)
