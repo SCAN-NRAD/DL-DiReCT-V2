@@ -100,6 +100,25 @@ def _ptrstr(pointer):
     libfn = get_lib_fn("ptrstr")
     return libfn(pointer)
 
+
+def harmonize_velocity_fields(prefix, ref_img):
+    """Give the ANTs velocity fields the geometry of the reference image.
+
+    kelly_kapowski() is handed bare numpy arrays, so the fields it writes carry
+    ITK's default geometry (diag(-1, -1, 1), zero origin) rather than the
+    subject's. Rewrite them with the reference affine so that both backends
+    produce the same thing.
+    """
+    for name in ('Forward', 'Inverse'):
+        path = '{}{}VelocityField.nii.gz'.format(prefix, name)
+        if not os.path.exists(path):
+            continue
+        data = np.asarray(nib.load(path).dataobj, dtype=np.float32)
+        img = nib.Nifti1Image(data, ref_img.affine)
+        img.header['xyzt_units'] = 10
+        nib.save(img, path)
+
+
 def save_img(img, dst, name, ref_img):
     fname = '{}/{}.nii.gz'.format(dst, name)
     niftiImg = nib.Nifti1Image(img, ref_img.affine)
@@ -110,6 +129,8 @@ def save_img(img, dst, name, ref_img):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Prepare input and run DiReCT')
     parser.add_argument('--prepare-only', type=bool, required=False, default=False, help='Prepare input only, skip DiReCT.')
+    parser.add_argument('--cuda', action='store_true', help='Use the GPU-accelerated DiReCT (PyTorch) instead of ANTs.')
+    parser.add_argument('--no-fields', action='store_true', help='Do not write the cumulative velocity fields.')
     parser.add_argument("source_dir")
     parser.add_argument("destination_dir")
     args = parser.parse_args()
@@ -169,12 +190,28 @@ if __name__ == '__main__':
     if not args.prepare_only:
         # run DiReCT (KellyKapowski), equivalent to
         #     KellyKapowski -d 3 -s ${DST}/seg.nii.gz -g ${DST}/gmprobT.nii.gz -w ${DST}/wmprobT.nii.gz -o ${THICK_VOLUME} -c "[ 45,0.0,10 ]" -v
-        thick = ants.from_numpy(wm_prob.copy())
-        kelly_kapowski(s=ants.from_numpy(seg_img), g=ants.from_numpy(gm_prob), w=ants.from_numpy(wm_prob), c='[ 45,0.0,10 ]', v='1', o=[thick, dst+"/T1w_"])
+        if args.cuda:
+            # GPU reimplementation of the same algorithm, writing the velocity
+            # fields in the same layout as the ANTs path.
+            from direct_cuda import kelly_kapowski_cuda
+            thick_np = kelly_kapowski_cuda(seg_img, gm_prob, wm_prob, verbose=True,
+                                           velocity_field_prefix=None if args.no_fields else dst+"/T1w_",
+                                           ref_img=ref_img)
+        else:
+            thick = ants.from_numpy(wm_prob.copy())
+            if args.no_fields:
+                # a single output parameter also stops ANTs from computing the
+                # cumulative fields at all, not just from writing them
+                kelly_kapowski(s=ants.from_numpy(seg_img), g=ants.from_numpy(gm_prob), w=ants.from_numpy(wm_prob), c='[ 45,0.0,10 ]', v='1', o=thick)
+            else:
+                kelly_kapowski(s=ants.from_numpy(seg_img), g=ants.from_numpy(gm_prob), w=ants.from_numpy(wm_prob), c='[ 45,0.0,10 ]', v='1', o=[thick, dst+"/T1w_"])
+            thick_np = thick.numpy()
+            if not args.no_fields:
+                harmonize_velocity_fields(dst+"/T1w_", ref_img)
 
         # Check thickness is not still all zeros
-        if thick.sum() == 0.0:
+        if thick_np.sum() == 0.0:
             raise RuntimeError("KellyKapowski failed to compute thickness")
 
-        save_img(thick.numpy(), dst, 'T1w_thickmap', ref_img)
+        save_img(thick_np, dst, 'T1w_thickmap', ref_img)
     

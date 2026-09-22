@@ -45,6 +45,8 @@ DO_SEG=1
 DO_FSR=1
 export FS_VERSION_SUPPORT="7.4.1"
 KEEP_INTERMEDIATE=0
+CUDA_DIRECT=0
+NO_FIELDS=0
 LOW_MEM_ARG=""
 MODEL_ARGS=""
 MP2RAGE_INV2=""
@@ -66,6 +68,8 @@ while [[ $# -gt 0 ]]; do
 		-g|--no-seg)    DO_SEG=0 ;;
 		-m|--model)	shift; MODEL_ARGS="--model $1" ;;
 		-k|--keep)	KEEP_INTERMEDIATE=1 ;;
+		--cuda-direct)	CUDA_DIRECT=1 ;;
+		--no-fields)	NO_FIELDS=1 ;;
 		-l|--lowmem)	LOW_MEM_ARG="--lowmem True" ;;
 		-*)		invalid "$1" ;;
 		*)		POSITIONAL+=("$1") ;;
@@ -137,7 +141,10 @@ fi
 
 if [ ${DO_CT} -gt 0 ] ; then
 	# DiReCT
-	python ${SCRIPT_DIR}/DiReCT.py "${DST}" "${DST}" || die "DiReCT failed"
+	DIRECT_ARGS=""
+	[ ${CUDA_DIRECT} -eq 0 ] || DIRECT_ARGS="--cuda"
+	[ ${NO_FIELDS} -eq 0 ] || DIRECT_ARGS="${DIRECT_ARGS} --no-fields"
+	python ${SCRIPT_DIR}/DiReCT.py ${DIRECT_ARGS} "${DST}" "${DST}" || die "DiReCT failed"
 
 	# extract stats
 	THICK_VOLUME=${DST}/T1w_thickmap.nii.gz

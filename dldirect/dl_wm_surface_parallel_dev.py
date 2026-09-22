@@ -17,6 +17,7 @@ import argparse
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from surface_frames import volume_info_from_prep
 import nighres
 import pymeshlab
 from nibabel.processing import conform
@@ -39,6 +40,26 @@ def rec_surf(binary, affine,r):
     # https://nighres.readthedocs.io/en/latest/shape/topology_correction.html
     # https://nighres.readthedocs.io/en/latest/surface/levelset_to_mesh.html
     # Ref: Bazin and Pham (2007). Topology correction of segmented medical images using a fast marching algorithm doi:10.1016/j.cmpb.2007.08.006
+    # nighres reads only dims and zooms from this image and returns voxel
+    # coordinates, so it does not need the 256^3 conform; this runs unchanged on
+    # the cropped grid (preparedata.py --space cropped). 'background->object'
+    # propagation does need background around the object, which the crop
+    # (the brain mask's bounding box) always leaves: measured >= 4 voxels of
+    # margin on every face for both hemispheres. Guard it anyway with an
+    # integer pad that is subtracted from the vertices -- exact, no resampling.
+    # Note the correction is NOT invariant to how much zero padding surrounds
+    # the object (it is deterministic for a given array): on sub-POBHC0002 rh
+    # the 256^3 conform and the bare crop disagree on 35 of 264k object voxels,
+    # all boundary voxels along the medial side, which moves ~260 of 145k
+    # vertices by more than 0.1mm (mean point-to-surface 0.0015mm). So pad only
+    # when the object actually touches a face.
+    pad = 0
+    touches = any(b[0].any() or b[-1].any() for b in
+                  (binary, np.moveaxis(binary, 1, 0), np.moveaxis(binary, 2, 0)))
+    if touches:
+        pad = 2
+        print('WARNING: %s WM mask touches the volume border; padding by %d voxels for topology correction' % (r, pad))
+        binary = np.pad(binary, pad)
     farray_img = nib.Nifti1Image(binary.astype(np.float64), affine)
 
     propag = 'background->object'
@@ -47,7 +68,7 @@ def rec_surf(binary, affine,r):
                     
     ret = nighres.shape.topology_correction(farray_img, 'binary_object', minimum_distance=minimum_distance, propagation=propag,connectivity=connect)
     l2m_ret = nighres.surface.levelset_to_mesh(ret['corrected'], connectivity=connect)
-    vertices = l2m_ret['result']['points']
+    vertices = l2m_ret['result']['points'] - pad
     faces = l2m_ret['result']['faces']
         
     return vertices, faces
@@ -58,14 +79,21 @@ def run_rec(input_list):
     affine = input_list[2]
     region = input_list[3]
     
-    # Regions based on dl output label_def.csv
+    # Regions based on dl output label_def.csv.
+    # The hippocampus is excluded along with the cerebellum, matching the mask
+    # preparedata.py builds for filled.mgz. The two masks used to disagree:
+    # filled.mgz dropped the hippocampus but this one kept it, and since
+    # filled.mgz is read only by FreeSurfer's mris_make_surfaces, the surface
+    # actually produced here enclosed the hippocampus. Every other 'Left*' /
+    # 'Right*' label is deliberately kept -- filling the subcortical structures
+    # is what makes the WM mask simply connected for topology_correction.
     if region == 'lh':
-        labels = [df_labels['ID'][x] for x in df_labels['ID'].keys() if (x.startswith('Left') and x != 'Left-Cerebellum') ]
+        labels = [df_labels['ID'][x] for x in df_labels['ID'].keys() if (x.startswith('Left') and x != 'Left-Cerebellum' and x != 'Left-Hippocampus') ]
         mask = np.isin(seg_img, labels)
         binary = np.array(np.where(mask,1,0),dtype=np.int32)
 
     elif region == 'rh':
-        labels = [df_labels['ID'][x] for x in df_labels['ID'].keys() if (x.startswith('Right') and x != 'Right-Cerebellum') ]
+        labels = [df_labels['ID'][x] for x in df_labels['ID'].keys() if (x.startswith('Right') and x != 'Right-Cerebellum' and x != 'Right-Hippocampus') ]
         mask = np.isin(seg_img, labels)
         binary = np.array(np.where(mask,1,0),dtype=np.int32)        
     else:
@@ -86,9 +114,14 @@ def run_rec(input_list):
     m=ms.current_mesh()
     # FreeSurfer binary files
     # Visualization together with T1w_norm.nii.gz        
-    nib.freesurfer.io.write_geometry(args.output+'/surf/'+region+'.white', m.vertex_matrix(), m.face_matrix(), create_stamp=None, volume_info=None)
-    nib.freesurfer.io.write_geometry(args.output+'/surf/'+region+'.orig', m.vertex_matrix(), m.face_matrix(), create_stamp=None, volume_info=None)
-    nib.freesurfer.io.write_geometry(args.output+'/surf/'+region+'.white.preaparc', m.vertex_matrix(), m.face_matrix(), create_stamp=None, volume_info=None)
+    # A surface file should state its own frame: FreeSurfer's carry the volume
+    # geometry (dimensions, voxel size, direction cosines, cras) so a reader can
+    # place them without outside knowledge. Writing volume_info=None is why
+    # freeview reported "Did not find any volume info" for these.
+    vol_info = volume_info_from_prep(args.input)
+    nib.freesurfer.io.write_geometry(args.output+'/surf/'+region+'.white', m.vertex_matrix(), m.face_matrix(), create_stamp=None, volume_info=vol_info)
+    nib.freesurfer.io.write_geometry(args.output+'/surf/'+region+'.orig', m.vertex_matrix(), m.face_matrix(), create_stamp=None, volume_info=vol_info)
+    nib.freesurfer.io.write_geometry(args.output+'/surf/'+region+'.white.preaparc', m.vertex_matrix(), m.face_matrix(), create_stamp=None, volume_info=vol_info)
 
     # create annotation with unknown labels
     # will be changed in the future        
@@ -106,7 +139,10 @@ args = parser.parse_args()
 nsmooth = int(args.nsmooth)
 
 # Read DL+DiReCT results
-# segmentation
+# segmentation. Whatever grid preparedata.py wrote this on (256^3 conform by
+# default, the cropped grid with --space cropped) is the grid the surfaces are
+# built on, and the tkrRAS frame below is that grid's. Nothing here depends on
+# the grid being 256^3.
 seg_img = nib.load(args.input+'/mri/aparc.atlas+aseg.nii.gz')
 affine = get_vox2ras_tkr(seg_img)
 seg = seg_img.get_fdata()
