@@ -152,6 +152,28 @@ def check_surface_frame(verts, to_world, label_img, kind='white',
     return ok, st
 
 
+def volume_info_from_image(img, filename=None):
+    """`volume_info` describing the grid of an already-loaded image.
+
+    Use this when the caller knows the grid its surfaces are actually built on.
+    `volume_info_from_prep` below infers it from the prep's `mri/`, which is
+    correct only when the run was prepared with --space cropped: in a conformed
+    prep `mri/` is the 256^3 conform while the segmentation, the velocity field
+    and hence field_pial_prototype's surfaces stay on the cropped grid. A
+    surface written with the conform's geometry then claims a frame it is not
+    in, and freeview places it half a voxel out.
+    """
+    aff = img.affine
+    shape = np.asarray(img.shape[:3], int)
+    zooms = np.asarray(img.header.get_zooms()[:3], float)
+    cos = aff[:3, :3] / zooms[None, :]
+    return dict(head=np.array([2, 0, 20]), valid='1  # volume info valid',
+                filename=filename or getattr(img, 'get_filename', lambda: '')() or '',
+                volume=shape, voxelsize=zooms,
+                xras=cos[:, 0], yras=cos[:, 1], zras=cos[:, 2],
+                cras=nib.affines.apply_affine(aff, shape / 2.0))
+
+
 def volume_info_from_prep(prep_dir, ref='mri/aparc.atlas+aseg.nii.gz'):
     """FreeSurfer surface `volume_info` describing the grid our surfaces live in.
 
