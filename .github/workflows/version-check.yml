@@ -4,7 +4,9 @@ name: Version check
 # no package install needed, just `packaging` for PEP 440 parsing. On a PR
 # into main, also checks that tag-release.yml's post-merge tag doesn't already
 # exist for this version -- catches "forgot to bump the version" before the
-# merge instead of as a failed tag push after it.
+# merge instead of as a failed tag push after it. On a PR into dev, a clean
+# version is accepted only as the release bump of dev's current version
+# (e.g. 1.5.0.dev1 -> 1.5.0), which is read from the base branch.
 on:
   pull_request:
 
@@ -22,6 +24,9 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
+          git fetch --quiet --depth=1 origin "$BASE_REF"
+          git show FETCH_HEAD:pyproject.toml > "$RUNNER_TEMP/base_pyproject.toml"
+          export BASE_PYPROJECT="$RUNNER_TEMP/base_pyproject.toml"
           python3 - <<'EOF'
           import os
           import sys
@@ -50,11 +55,21 @@ jobs:
               sys.exit(1)
 
           if base_ref == "dev" and not v.is_devrelease:
-              print(f"::error::PR targets dev but the version ({version}) has no dev "
-                    f"suffix. pyproject.toml should carry a .devN version while on dev "
-                    f"(see CONTRIBUTING.md) -- did this branch get cut from main "
-                    f"instead of dev?")
-              sys.exit(1)
+              # The one clean version allowed into dev is the release of dev's
+              # current .devN version (CONTRIBUTING.md, step 4). A branch cut
+              # from main carries main's previous release instead.
+              with open(os.environ["BASE_PYPROJECT"], "rb") as f:
+                  base_version = tomllib.load(f)["project"]["version"]
+              b = Version(base_version)
+              if b.is_devrelease and v == Version(b.base_version):
+                  print(f"Release bump of dev's version: {base_version} -> {version}")
+              else:
+                  print(f"::error::PR targets dev but the version ({version}) has no dev "
+                        f"suffix. pyproject.toml should carry a .devN version while on dev, "
+                        f"or be the release of dev's current version {base_version} "
+                        f"(see CONTRIBUTING.md) -- did this branch get cut from main "
+                        f"instead of dev?")
+                  sys.exit(1)
 
           print("Version check passed.")
           EOF
