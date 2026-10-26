@@ -62,5 +62,8 @@ The following models are available with the ```--model ...``` option:
 - ```v7```: Same as v6, with 74 region per hemisphere according the *Destrieux* atlas ([Rebsamen et al., 2022](https://doi.org/10.1002/hbm.26117))
 -  ```v8```: Same as v6, but with fine-tuning for more contrast robustness across scanner sequence parameters ([Blattner et al., 2026](https://doi.org/10.1002/hbm.70560))
 
+# Contributing
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch model and version lifecycle used in this repo.
+
 # [Frequently Asked Questions](dldirect/doc/faq.md)
 For further details, consult the corresponding [publication](https://doi.org/10.1002/hbm.25159) and the [FAQ](dldirect/doc/faq.md) or [contact us](http://www.scancore.org/index.php/research/imageanalytics)

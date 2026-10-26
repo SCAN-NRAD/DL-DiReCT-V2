@@ -1,0 +1,72 @@
+name: Version check
+
+# Reads the version straight from pyproject.toml (tomllib, Python >= 3.11) --
+# no package install needed, just `packaging` for PEP 440 parsing. On a PR
+# into main, also checks that tag-release.yml's post-merge tag doesn't already
+# exist for this version -- catches "forgot to bump the version" before the
+# merge instead of as a failed tag push after it.
+on:
+  pull_request:
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install packaging
+        run: pip install packaging
+      - name: Check the version against the target branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          python3 - <<'EOF'
+          import os
+          import sys
+          import tomllib
+
+          from packaging.version import InvalidVersion, Version
+
+          with open("pyproject.toml", "rb") as f:
+              version = tomllib.load(f)["project"]["version"]
+
+          base_ref = os.environ["BASE_REF"]
+
+          try:
+              v = Version(version)
+          except InvalidVersion as e:
+              print(f"::error::version = {version!r} (pyproject.toml) is not a valid "
+                    f"PEP 440 version: {e}")
+              sys.exit(1)
+          print(f"version = {version} (valid PEP 440 version)")
+
+          # See CONTRIBUTING.md: dev always carries a .devN suffix, main never does.
+          if base_ref == "main" and v.is_devrelease:
+              print(f"::error::PR targets main but the version ({version}) still carries "
+                    f"a dev suffix. Remove it in pyproject.toml before merging into main "
+                    f"(see CONTRIBUTING.md).")
+              sys.exit(1)
+
+          if base_ref == "dev" and not v.is_devrelease:
+              print(f"::error::PR targets dev but the version ({version}) has no dev "
+                    f"suffix. pyproject.toml should carry a .devN version while on dev "
+                    f"(see CONTRIBUTING.md) -- did this branch get cut from main "
+                    f"instead of dev?")
+              sys.exit(1)
+
+          print("Version check passed.")
+          EOF
+      - name: Ensure the release tag doesn't already exist
+        if: github.base_ref == 'main'
+        run: |
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          TAG="v$VERSION"
+          echo "version = $VERSION -> tag $TAG"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists -- bump the version in pyproject.toml before merging into main (see CONTRIBUTING.md)."
+            exit 1
+          fi
+          echo "OK: tag $TAG does not exist yet."
