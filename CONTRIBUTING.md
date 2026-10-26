@@ -63,8 +63,10 @@ already exists.
    `main`, and merge it with a merge commit.
 5. **The merge commit on `main` gets tagged automatically** with the release
    version (e.g. `v1.5.0`) by
-   [`.github/workflows/tag-release.yml`](.github/workflows/tag-release.yml), no
-   manual tagging needed. Create the GitHub release page from that tag.
+   [`.github/workflows/tag-release.yml`](.github/workflows/tag-release.yml), which
+   also publishes the GitHub release page for that tag, with notes listing the
+   PRs merged since the previous release. No manual tagging needed; edit the
+   release notes on GitHub if they need more context.
 6. **Delete the merged `dev` branch**, then branch a new `dev` from the now-updated
    `main` and bump its version (step 1) to start the next cycle.
 
