@@ -7,15 +7,20 @@ name: Version check
 # merge instead of as a failed tag push after it. On a PR into dev, a clean
 # version is accepted only as the release bump of dev's current version
 # (e.g. 1.5.0.dev1 -> 1.5.0), which is read from the base branch.
+#
+# 'edited' is included so changing an open PR's base branch re-runs the check
+# against the new base. Re-running a failed job doesn't help there: it replays
+# the original event, base branch included.
 on:
   pull_request:
+    types: [opened, reopened, synchronize, edited]
 
 jobs:
   version-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install packaging
