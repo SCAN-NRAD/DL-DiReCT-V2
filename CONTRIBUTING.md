@@ -59,8 +59,10 @@ already exists.
    another (e.g. `.dev0` → `.dev1`), for instance before processing a dataset
    with the current `dev`, so its results can be traced back to that exact state.
 4. **When `dev` is ready to ship:** bump the version one last time without the
-   dev suffix (e.g. `1.5.0.dev1` → `1.5.0`), open a pull request from `dev` into
-   `main`, and merge it with a merge commit.
+   dev suffix (e.g. `1.5.0.dev1` → `1.5.0`) in a pull request into `dev` that
+   changes nothing else. `version-check` accepts a clean version on a PR into
+   `dev` only in this case: the release of `dev`'s current `.devN` version. Then
+   open a pull request from `dev` into `main`, and merge it with a merge commit.
 5. **The merge commit on `main` gets tagged automatically** with the release
    version (e.g. `v1.5.0`) by
    [`.github/workflows/tag-release.yml`](.github/workflows/tag-release.yml), which
