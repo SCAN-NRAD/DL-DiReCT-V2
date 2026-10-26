@@ -1,0 +1,37 @@
+name: Tag release
+
+# Runs after a dev -> main promotion lands (main's ruleset requires a PR, so
+# every push here is an approved merge). Tags can only be created against a
+# commit that already exists, so this has to be a post-merge push trigger --
+# version-check.yml is what enforces, pre-merge, that the version has no dev
+# suffix and that this tag doesn't already exist.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Create and push the release tag
+        run: |
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          TAG="v$VERSION"
+          echo "version = $VERSION -> tag $TAG"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists on origin -- was the version bumped before merging into main? Refusing to move an existing tag."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $VERSION"
+          git push origin "$TAG"
