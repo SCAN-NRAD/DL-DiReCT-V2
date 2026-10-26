@@ -1,4 +1,5 @@
 import argparse
+import os
 import numpy as np
 import nibabel as nib
 import pandas as pd
@@ -28,8 +29,14 @@ args = parser.parse_args()
 # with respect to the T1w_norm* volumes by (128 - centre of the crop).
 # segmentation
 seg_image = nib.load(args.input+'/T1w_norm_seg.nii.gz')
-# MRI
-brain_image = nib.load(args.input+'/T1w_norm_noskull.nii.gz')
+# MRI: the volume dl+direct.sh segmented. With --bet that is the skull-stripped
+# T1w_norm_noskull.nii.gz; without it the input is expected to be skull-stripped
+# already and T1w_norm.nii.gz is used as is, and T1w_norm_noskull.nii.gz is
+# never written.
+brain_file = args.input+'/T1w_norm_noskull.nii.gz'
+if not os.path.exists(brain_file):
+    brain_file = args.input+'/T1w_norm.nii.gz'
+brain_image = nib.load(brain_file)
 affine = get_vox2ras_tkr(seg_image)
 
 # DeepSCAN label definition
