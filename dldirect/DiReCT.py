@@ -17,6 +17,7 @@ def save_img(img, dst, name, ref_img):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Prepare input and run DiReCT')
     parser.add_argument('--prepare-only', type=bool, required=False, default=False, help='Prepare input only, skip DiReCT.')
+    parser.add_argument('--cuda', action='store_true', help='Run DiReCT on the GPU (PyTorch) instead of ANTs. Thickness is ~1.7%% lower than with ANTs.')
     parser.add_argument("source_dir")
     parser.add_argument("destination_dir")
     args = parser.parse_args()
@@ -76,11 +77,17 @@ if __name__ == '__main__':
     if not args.prepare_only:
         # run DiReCT (KellyKapowski), equivalent to
         #     KellyKapowski -d 3 -s ${DST}/seg.nii.gz -g ${DST}/gmprobT.nii.gz -w ${DST}/wmprobT.nii.gz -o ${THICK_VOLUME} -c "[ 45,0.0,10 ]" -v
-        thick = ants.kelly_kapowski(s=ants.from_numpy(seg_img), g=ants.from_numpy(gm_prob), w=ants.from_numpy(wm_prob), c='[ 45,0.0,10 ]', v='1')
+        if args.cuda:
+            # PyTorch reimplementation of KellyKapowski
+            from direct_cuda import kelly_kapowski_cuda
+            thick_np = kelly_kapowski_cuda(seg_img, gm_prob, wm_prob, verbose=True)
+        else:
+            thick = ants.kelly_kapowski(s=ants.from_numpy(seg_img), g=ants.from_numpy(gm_prob), w=ants.from_numpy(wm_prob), c='[ 45,0.0,10 ]', v='1')
+            thick_np = thick.numpy()
 
         # Check thickness is not still all zeros
-        if thick.sum() == 0.0:
+        if thick_np.sum() == 0.0:
             raise RuntimeError("KellyKapowski failed to compute thickness")
 
-        save_img(thick.numpy(), dst, 'T1w_thickmap', ref_img)
+        save_img(thick_np, dst, 'T1w_thickmap', ref_img)
     
