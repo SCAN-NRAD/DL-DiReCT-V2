@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DL-DiReCT"
-version = "1.5.0.dev0"
+version = "1.1.0.dev0"
 description = "DL+DiReCT - Direct Cortical Thickness Estimation using Deep Learning-based Anatomy Segmentation and Cortex Parcellation"
 readme = "README.md"
 authors = [ {name = "Michael Rebsamen"}, {name = "Victor Mello"}, {name = "David Romascano"}, {name = "Richard McKinley"}]
