@@ -2,7 +2,7 @@
 
 usage() {
 cat << EOF
-Usage: dl+direct [-h] [-s subject] [-b [-i inv2_file]] [-n] [-f] [-g] [-m model_file] [-k] T1_FILE OUTPUT_DIR
+Usage: dl+direct [-h] [-s subject] [-b [-i inv2_file]] [-n] [-f] [-g] [-m model_file] [-k] [--cuda-direct] T1_FILE OUTPUT_DIR
 Process T1_FILE (nifti) with dl+direct and put results into OUTPUT_DIR.
 Input is expected to be a skull-stripped T1w MRI. You may specify --bet to remove
 the skull (using hd-bet).
@@ -18,6 +18,8 @@ optional arguments:
 	-m|--model		Use given trained model
 	-k|--keep		Keep intermediate files
 	-l|--lowmem		Use less memory (use fp16 for ensembling)
+	--cuda-direct		Run DiReCT on the GPU instead of ANTs (thickness ~1.7% lower,
+				do not mix backends within a study)
 	
 EOF
 	exit 0
@@ -45,6 +47,7 @@ DO_SEG=1
 DO_FSR=1
 export FS_VERSION_SUPPORT="7.4.1"
 KEEP_INTERMEDIATE=0
+CUDA_DIRECT=0
 LOW_MEM_ARG=""
 MODEL_ARGS=""
 MP2RAGE_INV2=""
@@ -66,6 +69,7 @@ while [[ $# -gt 0 ]]; do
 		-g|--no-seg)    DO_SEG=0 ;;
 		-m|--model)	shift; MODEL_ARGS="--model $1" ;;
 		-k|--keep)	KEEP_INTERMEDIATE=1 ;;
+		--cuda-direct)	CUDA_DIRECT=1 ;;
 		-l|--lowmem)	LOW_MEM_ARG="--lowmem True" ;;
 		-*)		invalid "$1" ;;
 		*)		POSITIONAL+=("$1") ;;
@@ -137,7 +141,9 @@ fi
 
 if [ ${DO_CT} -gt 0 ] ; then
 	# DiReCT
-	python ${SCRIPT_DIR}/DiReCT.py "${DST}" "${DST}" || die "DiReCT failed"
+	DIRECT_ARGS=""
+	[ ${CUDA_DIRECT} -eq 0 ] || DIRECT_ARGS="--cuda"
+	python ${SCRIPT_DIR}/DiReCT.py ${DIRECT_ARGS} "${DST}" "${DST}" || die "DiReCT failed"
 
 	# extract stats
 	THICK_VOLUME=${DST}/T1w_thickmap.nii.gz

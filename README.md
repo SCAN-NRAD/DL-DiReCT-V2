@@ -55,6 +55,9 @@ Results may be collected into FreeSurfer alike statistics files with ```stats2ta
 ## Contrast-enhanced (CE) MRI
 To process images with a contrast agent (contrast-enhanced), use the option ```--model v6``` ([Rebsamen et al., 2022](https://doi.org/10.1002/hbm.26117)).
 
+## GPU-accelerated DiReCT
+With ```--cuda-direct```, DiReCT runs on the GPU (PyTorch) instead of ANTs on the CPU, in about a minute instead of ~15 minutes. Thickness is ~1.7% lower than with ANTs (the default), so do not mix the two within a study.
+
 # Available Models
 The following models are available with the ```--model ...``` option:
 - ```v0```: Default, for un-enhanced T1w MRI, cortex parcellation with *Desikan-Killiany* atlas ([Rebsamen et al., 2020](https://doi.org/10.1002/hbm.25159))
