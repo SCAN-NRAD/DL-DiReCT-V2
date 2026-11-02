@@ -13,7 +13,7 @@ optional arguments:
 	-c|--cpu		number of parallel CPU jobs (default 8)
 	-g|--gpu		number of parallel GPU jobs (default 1)
 	-b|--bet		Skull-stripping using hd-bet
-	-m|--model		Use given trained model (default v0, and v6 for _ce images)
+	-m|--model		Use given trained model for all subjects (default v0, and v6 for _ce images)
 	
 EOF
 	exit 0
@@ -87,8 +87,9 @@ run_dl() {
 			# MP2Rage
 			BET_ARGS=" ${BET_ARGS} --mp2rage-inv2 ${SRC}/${SUBJ}/T1_INV2.nii.gz"
 		fi
-		if [[ "${SUBJ}" =~ .*"_ce"$ ]]; then
-			# if the subject name ends with '_ce', treat as contrast-enhanced (ce) image
+		if [[ -z "${MODEL_ARGS}" ]] && [[ "${SUBJ}" =~ .*"_ce"$ ]]; then
+			# if no model was given and the subject name ends with '_ce', treat as
+			# contrast-enhanced (ce) image; a model given with --model is kept
 			MODEL_ARGS="--model v6"
 		fi
 		dl+direct --subject ${SUBJ} ${BET_ARGS} --no-cth --no-fsr --keep ${MODEL_ARGS} ${SRC}/${SUBJ}/${T1_FILE} ${DIR} 2>&1 >> ${DIR}/dl.log

@@ -64,5 +64,13 @@ if __name__ == '__main__':
     src_nib = nib.load(args.source)
     crop = get_crop(np.asanyarray(template_nib.dataobj))
     result = apply_crop(np.asanyarray(src_nib.dataobj), crop) if not args.revert else apply_uncrop(np.asanyarray(template_nib.dataobj), np.asanyarray(src_nib.dataobj), crop)
-    nib.save(nib.Nifti1Image(result, template_nib.affine), args.destination)
+
+    # A cropped volume no longer starts at the origin of the template, so the
+    # affine has to be shifted by the crop offset. Uncropping restores the
+    # original array position and keeps the template affine unchanged.
+    affine = template_nib.affine.copy()
+    if not args.revert:
+        affine[:3, 3] += template_nib.affine[:3, :3] @ crop[0]
+
+    nib.save(nib.Nifti1Image(result, affine), args.destination)
     

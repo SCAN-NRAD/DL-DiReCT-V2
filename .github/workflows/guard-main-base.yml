@@ -1,0 +1,31 @@
+name: Guard main branch target
+
+# Enforces the branch model in CONTRIBUTING.md: main only ever moves via a PR
+# whose head branch is dev. This job is skipped for any PR that doesn't target
+# main, so it never affects day-to-day dev PRs -- but mark it as a required
+# status check on main's ruleset so GitHub actually blocks the merge button
+# when it fails.
+#
+# 'edited' is included so retargeting an already-open PR's base branch to
+# main re-triggers this check instead of silently keeping a stale passing
+# status.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+jobs:
+  guard-main-base:
+    if: github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only dev may merge into main
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" != "dev" ] || [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error::PRs into 'main' are only allowed from this repository's 'dev' branch (see CONTRIBUTING.md). This PR's head is '$HEAD_REPO:$HEAD_REF' -- merge it into dev first, then open the dev -> main promotion PR."
+            exit 1
+          fi
+          echo "OK: PR into main is from dev."
